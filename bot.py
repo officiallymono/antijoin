@@ -3,19 +3,24 @@ import logging
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ChatMemberUpdated
 from aiogram.filters import ChatMemberUpdatedFilter
+from fastapi import FastAPI
+import uvicorn
+import os
 
-# تنظیمات اولیه
-TOKEN = "7549289339:AAHGQqOhE7KFmHJTTET9W1tL3lFoU4GH_ww"  # 🔹 توکن ربات را جایگزین کن
-CHAT_ID = -1002219447414   # 🔹 آیدی کانال را جایگزین کن (با -100 شروع می‌شود)
+# متغیرهای اصلی
+TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN")  # 🔹 از متغیر محیطی بگیر
+CHAT_ID = int(os.getenv("CHAT_ID", "-1001234567890"))  # 🔹 آیدی کانال
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "https://your-vercel-app.vercel.app/webhook")  # 🔹 لینک وبهوک
 
-# ایجاد نمونه‌های ربات و دیسپچر
+# ایجاد بات و دیسپچر
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+app = FastAPI()
 
 # تنظیمات لاگینگ
 logging.basicConfig(level=logging.INFO)
 
-# هندلر برای شناسایی اعضای جدید در کانال
+# هندلر برای جلوگیری از جوین شدن اعضا
 @dp.chat_member(ChatMemberUpdatedFilter(member_status_changed=True))
 async def handle_new_members(update: ChatMemberUpdated):
     if update.chat.id == CHAT_ID and update.new_chat_member.status == "member":
@@ -28,9 +33,19 @@ async def handle_new_members(update: ChatMemberUpdated):
         except Exception as e:
             logging.error(f"⚠️ خطا در بن کردن کاربر: {e}")
 
-# اجرای ربات با polling
-async def main():
-    await dp.start_polling(bot)
+# مسیر FastAPI برای وبهوک
+@app.post("/webhook")
+async def webhook(update: dict):
+    update = types.Update(**update)
+    await dp.feed_update(bot, update)
+    return {"status": "ok"}
 
+# ست کردن وبهوک هنگام راه‌اندازی
+@app.on_event("startup")
+async def on_startup():
+    await bot.set_webhook(WEBHOOK_URL)
+    logging.info(f"🚀 وبهوک روی {WEBHOOK_URL} تنظیم شد!")
+
+# اجرای FastAPI (مخصوص Cloudflare/Vercel)
 if __name__ == "__main__":
-    asyncio.run(main())
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
